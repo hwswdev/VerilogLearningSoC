@@ -1,17 +1,25 @@
 // ***************************************************************************
 // * © Evgeny Sobolev, passport 76 1375783, 
 // * disallowed to any type  of use by thirdparty
-// * uart_tx, - UART module   
-// ***************************************************************************
+// * uart_tx, - UART module
+// * i_rst - input reset signal
+// * i_clk - input reset clock signal
+// * i_baud8_clk - input baud clock multiplyed by 8
+// * i_wr - input data (byte) write signal
+// * i_data - input data (byte)
+// * o_txe  - output flag, new data can be uploaded
+// * o_txc  - output flag, byte transmit complete
+// * o_tx   - output tx pin
+// ****************************************************************************
 module uart_tx (
 	i_rst,			  	// Module reset
 	i_clk,				// System clock
 	i_baud8_clk,		// Baud clock multiplyed by 8, the same as receiver
 	i_wr,				// Write data strobe 
 	i_data,				// Data 8-bit
-	o_bsy,				// Means, bus is busy
 	o_tx,				// USART TX pin
-	o_rdy
+	o_txe,				// Tx empty flag
+	o_txc				// Tx complete strobe
 	);
 	
 input  wire i_rst;
@@ -20,121 +28,102 @@ input  wire i_baud8_clk;
 input  wire i_wr;
 input  wire [7:0]i_data;
 output reg o_bsy;
-output reg o_rdy;
+output reg o_txr;	
+	
+output wire o_rdy;
 output wire o_tx;
 	
-
-
-reg r_wr;
-reg [1:0]r_baud8_clk; 		 // i_baud8_clk, i.e. baud clock multipied by 8.
-reg r_baud8_clk_posedge;	 // delayed by 3 i_clk, i_baud_clk pulse each posedge
-reg r_baud8_clk_posedge_1ck; // delayed by 4 i_clk, i_baud_clk pulse each posedge
-reg [2:0]r_baud8_clk_cntr;	 // decremented each r_baud8_clk_posedge, if o_bsy set
-reg r_baud_clk;				 // baud clock pulses, if o_bsy set
-reg [12:0]r_tx_data;		 // data, which contains { 1'b1, i_data[7:0], 2'b01 }
-reg r_bsy_1ck;
-
+output reg o_txe;
+output reg o_txc;	
 	
-assign o_tx = r_tx_data[0];
+reg [1:0]r_baud8_clk;
+reg r_baud_clk_posedge;
+reg [7:0]r_baud8_counter;
+reg [10:0]r_data;
+	
+assign o_tx = r_data[0];
 
-	
-always @( posedge i_clk or posedge i_rst) begin
-	if ( i_rst ) begin
-		r_wr <= 1'b0;
-	end else begin
-		r_wr <= i_wr;
-	end
-end
-	
-// Shift i_baud8_clk into r_baud8_clk[1:0]
+// Generate baud clock posedge
+// It's delayed from original i_baud8_clk, by 3 cycles
+// But it's doesn't metters
 always @( posedge i_clk or posedge i_rst ) begin
 	if ( i_rst ) begin
-		r_baud8_clk[1:0] <= 2'b00;
+		r_baud8_clk <= 2'b00;
+		r_baud_clk_posedge <= 1'b0;
 	end else begin
-		// Shift data from i_baud8_clk
-		r_baud8_clk[1:0] <= { r_baud8_clk[0], i_baud8_clk };
+		r_baud8_clk <= { r_baud8_clk[0], i_baud8_clk };
+		r_baud_clk_posedge <= ~r_baud8_clk[0] & ( r_baud8_clk[1] );
 	end
 end
 
-// Generate posedge of i_baud8_clk, single i_clk duration
-// Signal r_baud8_clk_posedge is shifted by 3 i_clk clock signal
-always @( posedge i_clk or posedge i_rst ) begin
-	if ( i_rst ) begin
-		r_baud8_clk_posedge <= 1'b0;
-		r_baud8_clk_posedge_1ck <= 1'b0;
-	end else begin
-		r_baud8_clk_posedge <= (~r_baud8_clk[1]) & r_baud8_clk[0];
-		r_baud8_clk_posedge_1ck <= r_baud8_clk_posedge;
-	end
-end
 
-// Divdide i_baud8_clk by 8, to get baud_clk
-// baud_clk, have to be started fast as possible,
-// after activation. Don't wait up to 7 i_baud8_clk
+wire baud_counter_on;
+assign baud_counter_on  = ( |(r_baud8_counter) );
+
+wire tx_start_or_data;
+assign tx_start_or_data	= ( |(r_baud8_counter[7:3]) );
+
+
 always @( posedge i_clk or posedge i_rst ) begin
 	if ( i_rst ) begin
-		r_baud8_clk_cntr <= 3'h0;
+		r_baud8_counter <= 8'h00;
 	end else begin
-		// LUT5, i.e. { o_bsy, r_baud8_clk_posedge, r_baud8_clk_cntr[2:0] }
-		if ( o_bsy ) begin
-			if ( r_baud8_clk_posedge ) begin
-				r_baud8_clk_cntr <= r_baud8_clk_cntr + 3'b111; // i.e decrement counter
+		if ( baud_counter_on ) begin
+			if ( r_baud_clk_posedge ) begin
+				r_baud8_counter <= r_baud8_counter - 8'h01;
 			end else begin
-				r_baud8_clk_cntr <= r_baud8_clk_cntr;
+				r_baud8_counter <= r_baud8_counter;
 			end
 		end else begin
-			r_baud8_clk_cntr <= 3'h0;
+			if ( ~r_data[1] ) begin
+				r_baud8_counter <= 8'h4F;
+			end else begin
+				r_baud8_counter <= r_baud8_counter;
+			end
 		end
 	end
 end
-
-// Genreate r_baud_clk 
-always @( posedge i_clk or posedge i_rst ) begin
-	if ( i_rst ) begin
-		r_baud_clk <= 1'b0;
-	end else begin
-		// LUT4, generate baud clock on next i_baud8_clk
-		r_baud_clk <= (&(r_baud8_clk_cntr)) & r_baud8_clk_posedge_1ck;
-	end
-end
-
-// Make signal "o_bsy"
+	
+reg r_txe;
+reg r_txc;
+reg r_txc_1ck_late;
+		
 always @( posedge i_clk or posedge i_rst ) begin
 	if ( i_rst ) begin
 		o_bsy <= 1'b0;
+		r_txe <= 1'b0;
+		r_txc <= 1'b0;
+		r_txc_1ck_late <= 1'b0;
+		o_txe <= 1'b0;
+		o_txc <= 1'b0;
 	end else begin
-		// 3 x LUT4 + LUT3(4) ????
-		o_bsy <= (|(r_tx_data[11:1])) | ( (~o_bsy) & i_wr );
-		r_bsy_1ck <= o_bsy;
+		o_bsy  <= baud_counter_on;
+		r_txe <= ~tx_start_or_data;
+		o_txe <= r_txe & (r_data[1]) & (~i_wr);
+		r_txc <= ~baud_counter_on;
+		r_txc_1ck_late <= r_txc;
+		o_txc <= (~r_txc_1ck_late) & r_txc;
 	end
-end
-
-// Make signal tx
+end	
+	
+wire next_bit_strobe;
+assign next_bit_strobe = (&(r_baud8_counter[2:0])) & r_baud_clk_posedge;
+	
 always @( posedge i_clk or posedge i_rst ) begin
 	if ( i_rst ) begin
-		r_tx_data <= 12'h01;
-	end else begin			
-		// 12 x LUT6, i.e. { i_data, r_tx_data[i], r_tx_data[i+1], i_wr, o_bsy, r_baud_clk }
-		case ({ i_wr, o_bsy, r_baud_clk } )
-			3'b000: r_tx_data <= 12'h01;
-			3'b001: r_tx_data <= 12'h01;
-			3'b100: r_tx_data <= { 2'b11, i_data, 2'b01 };
-			3'b101: r_tx_data <= { 2'b11, i_data, 2'b01 };
-			3'b110: r_tx_data <= r_tx_data;
-			3'b010: r_tx_data <= r_tx_data;
-			3'b011: r_tx_data <= { 1'b0,   r_tx_data[11:1] };
-			3'b111: r_tx_data <= { 1'b0,   r_tx_data[11:1] };
-		endcase
+		r_data <= 10'h3FF;
+	end else begin
+		if ( i_wr & r_txe ) begin
+			r_data <= { 1'b1, i_data, 2'b01 };
+		end else begin
+			if ( next_bit_strobe ) begin
+				r_data <= { 1'b1, r_data[10:1] };
+			end else begin
+				r_data <= r_data;
+			end
+		end
 	end
 end
 	
-// Generate tx complete signal
-always @( posedge i_clk or posedge i_rst ) begin
-	if ( i_rst ) begin
-		o_rdy <= 1'b0;
-	end else begin
-		o_rdy <= (~o_bsy) & (r_bsy_1ck);		
-	end
-end
-
+	
 endmodule
