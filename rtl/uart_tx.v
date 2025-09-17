@@ -38,7 +38,7 @@ output reg o_txc;
 	
 reg [1:0]r_baud8_clk;
 reg r_baud_clk_posedge;
-reg [7:0]r_baud8_counter;
+reg [6:0]r_baud8_counter;
 reg [10:0]r_data;
 	
 assign o_tx = r_data[0];
@@ -61,22 +61,22 @@ wire baud_counter_on;
 assign baud_counter_on  = ( |(r_baud8_counter) );
 
 wire tx_start_or_data;
-assign tx_start_or_data	= ( |(r_baud8_counter[7:3]) );
+assign tx_start_or_data	= ( |(r_baud8_counter[6:3]) );
 
 
 always @( posedge i_clk or posedge i_rst ) begin
 	if ( i_rst ) begin
-		r_baud8_counter <= 8'h00;
+		r_baud8_counter <= 7'h00;
 	end else begin
 		if ( baud_counter_on ) begin
 			if ( r_baud_clk_posedge ) begin
-				r_baud8_counter <= r_baud8_counter - 8'h01;
+				r_baud8_counter <= r_baud8_counter - 7'h01;
 			end else begin
 				r_baud8_counter <= r_baud8_counter;
 			end
 		end else begin
 			if ( ~r_data[1] ) begin
-				r_baud8_counter <= 8'h4F;
+				r_baud8_counter <= 7'h4F;
 			end else begin
 				r_baud8_counter <= r_baud8_counter;
 			end
