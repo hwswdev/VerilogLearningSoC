@@ -14,11 +14,20 @@ reg  r_rst;
 reg  r_wr;
 reg [7:0]r_tx_data;
 
+	
+reg  r_clk2;
+reg	 r_sysclk_div;
+	
+	
 wire w_tx_bsy;
 wire w_tx_line;
-wire w_bit_strobe;
 wire w_tx_empty;
-wire w_tx_complete;		
+wire w_tx_complete;
+	
+wire w_tx_line2;
+wire w_tx_empty2;
+wire w_tx_complete2;
+	
 wire w_rx_rdy;
 wire w_rx_bsy;
 wire [6:0]w_rx_cntr;
@@ -41,36 +50,45 @@ initial begin
 	$dumpvars( 9, w_rx_bsy );
 	$dumpvars(10, w_rx_data );
 	
+	$dumpvars(11, r_clk2 );
+	$dumpvars(12, w_tx_empty2 );
+	$dumpvars(13, w_tx_complete2 );
+	$dumpvars(14, w_tx_line2 );
+	
 	r_wr  = 1'b0;
 	r_rst = 1'b0;
 	r_clk = 1'b0;
+	r_clk2 = 1'b0;
+	r_sysclk_div = 1'b0;	
 	r_baud8_rx_clk = 1'b1;
 	r_baud8_tx_clk = 1'b0;
-	r_tx_data = 8'hFF;
+
 	
+	r_tx_data = 8'hFF;
 	#100;
 	r_rst <= 1'b1;
-	#20;
+	#60;
 	r_rst <= 1'b0;
 	#1000;
 	r_tx_data = 8'h55;
-	#20;
+	#60;
 	r_wr = 1'b1;
-	#20;
+	#60;
 	r_wr = 1'b0;
 	r_tx_data = 8'h75;
-	#7200;
+	//#7200;
+	#7150;
 	r_wr = 1'b1;
-	#20;
+	#60;
 	r_wr = 1'b0;
 	#2500;
 	r_wr = 1'b1;
-	#20;
+	#60;
 	r_wr = 1'b0;
 	r_tx_data = 8'h55;
 	#7500;
 	r_wr = 1'b1;
-	#20;
+	#60;
 	r_wr = 1'b0;
 	#7200;	
 	r_tx_data = 8'h7F;
@@ -85,12 +103,20 @@ initial begin
 	#55000;
 	r_wr = 1'b0;
 	#20000;
+	
+	
 	$display("finished OK!");
 	$finish;
 end
 
-always #10 begin
+always #12 begin
+	r_sysclk_div <= ~r_sysclk_div;
 	r_clk <= ~r_clk;
+	if ( r_sysclk_div ) begin
+		r_clk2 <= ~r_clk2;
+	end else begin
+		r_clk2 <= r_clk2;
+	end
 end
 
 always #50 begin
@@ -112,7 +138,7 @@ uart_tx uart_tx_inst(
 	.o_txc(w_tx_complete),
 	.o_tx(w_tx_line)
 );
-	
+		
 uart_rx uart_rx_inst( 
 	.i_rst(r_rst),
 	.i_clk(r_clk),
@@ -122,5 +148,17 @@ uart_rx uart_rx_inst(
 	.o_data(w_rx_data),
 	.o_bsy(w_rx_bsy)
 	);
+
+uart_tx uart_tx_inst2( 
+	.i_rst(r_rst),
+	.i_clk(r_clk2),
+	.i_baud8_clk(r_baud8_tx_clk),
+	.i_wr(r_wr),
+	.i_data(r_tx_data),
+	.o_txe(w_tx_empty2),
+	.o_txc(w_tx_complete2),
+	.o_tx(w_tx_line2)
+);	
+	
 
 endmodule

@@ -70,13 +70,13 @@ always @( posedge i_clk or posedge i_rst ) begin
 	end else begin
 		if ( baud_counter_on ) begin
 			if ( r_baud_clk_posedge ) begin
-				r_baud8_counter <= r_baud8_counter - 7'h01;
+				r_baud8_counter <= r_baud8_counter + 7'h7F;
 			end else begin
 				r_baud8_counter <= r_baud8_counter;
 			end
 		end else begin
 			if ( ~r_data[1] ) begin
-				r_baud8_counter <= 7'h4F;
+				r_baud8_counter <= 7'h50;
 			end else begin
 				r_baud8_counter <= r_baud8_counter;
 			end
@@ -99,7 +99,7 @@ always @( posedge i_clk or posedge i_rst ) begin
 	end else begin
 		o_bsy  <= baud_counter_on;
 		r_txe <= ~tx_start_or_data;
-		o_txe <= r_txe & (r_data[1]) & (~i_wr);
+		o_txe <= r_txe & (~r_data[1]) & ~i_wr; // data[1] is zero if new byte is loaded
 		r_txc <= ~baud_counter_on;
 		r_txc_1ck_late <= r_txc;
 		o_txc <= (~r_txc_1ck_late) & r_txc;
