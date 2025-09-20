@@ -61,7 +61,7 @@ wire baud_counter_on;
 assign baud_counter_on  = ( |(r_baud8_counter) );
 
 wire tx_start_or_data;
-assign tx_start_or_data	= ( |(r_baud8_counter[6:3]) );
+assign tx_start_or_data	= ( |(r_baud8_counter[6:2]) );
 
 
 always @( posedge i_clk or posedge i_rst ) begin
@@ -99,7 +99,7 @@ always @( posedge i_clk or posedge i_rst ) begin
 	end else begin
 		o_bsy  <= baud_counter_on;
 		r_txe <= ~tx_start_or_data;
-		o_txe <= r_txe & (~r_data[1]) & ~i_wr; // data[1] is zero if new byte is loaded
+		o_txe <= r_txe & (r_data[1]);// & ~i_wr; // data[1] is zero when new byte is loaded
 		r_txc <= ~baud_counter_on;
 		r_txc_1ck_late <= r_txc;
 		o_txc <= (~r_txc_1ck_late) & r_txc;
